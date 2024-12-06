@@ -7,10 +7,12 @@ import androidx.compose.ui.graphics.Color
 
 
 private val CustomColorScheme = lightColorScheme(
-    primary = Color(0xFF7E201B),
+    primary = Color(0xFF893939),
     onPrimary = Color.Red,
-    secondary = Color(0xFF070111),
+    secondary = Color(0xFFFFFFFF),
     onSecondary = Color.Black,
+    background = Color(0xFF1C1C1C)
+
 )
 
 @Composable
@@ -18,6 +20,6 @@ fun VinicolaAgnelloTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = CustomColorScheme,
         typography = Typography,
-        content = content
+        content = content,
     )
 }

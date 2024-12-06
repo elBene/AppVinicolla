@@ -31,7 +31,37 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.Room
 import kotlinx.coroutines.launch
+import androidx.room.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.unit.sp
 
+
+@Entity(tableName = "produtos")
+data class Product(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val nome: String,
+    val teor: String,
+    val preco: Double
+)
+
+@Dao
+interface ProductDao {
+    @Insert
+    suspend fun insertProduct(product: Product)
+
+    @Update
+    suspend fun updateProduct(product: Product)
+
+    @Delete
+    suspend fun deleteProduct(product: Product)
+
+    @Query("SELECT * FROM produtos")
+    suspend fun getAllProducts(): List<Product>
+
+    @Query("SELECT * FROM produtos WHERE id = :id")
+    suspend fun getProductById(id: Int): Product?
+}
 
 @Entity(tableName = "usuarios")
 data class User(
@@ -48,9 +78,10 @@ interface UserDao {
     suspend fun getUser(email: String, password: String): User?
 }
 
-@Database(entities = [User::class], version = 1)
+@Database(entities = [User::class, Product::class], version = 2)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
+    abstract fun productDao(): ProductDao
 }
 
 class MainActivity : ComponentActivity() {
@@ -58,39 +89,48 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        db = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "vinicola_db").build()
+        db = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "vinicola_db")
+            .fallbackToDestructiveMigration()
+            .build()
 
         setContent {
             VinicolaAgnelloTheme {
-                var showLogin by remember { mutableStateOf(true) }
-                var isLoggedIn by remember { mutableStateOf(false) }
-                val coroutineScope = rememberCoroutineScope()
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    var showLogin by remember { mutableStateOf(true) }
+                    var isLoggedIn by remember { mutableStateOf(false) }
+                    val coroutineScope = rememberCoroutineScope()
 
-                if (isLoggedIn) {
-                    Text("Bem vindo à Vinicola Agricola!")
-                } else {
-                    if (showLogin) {
-                        LoginScreen(
-                            onLogin = { email, password ->
-                                coroutineScope.launch {
-                                    val user = db.userDao().getUser(email, password)
-                                    if (user != null) {
-                                        isLoggedIn = true
-                                    }
-                                }
-                            },
-                            onRegister = { showLogin = false }
-                        )
+                    if (isLoggedIn) {
+                        Column {
+                            ProductScreen(db)
+                        }
                     } else {
-                        RegisterScreen(
-                            onRegister = { email, password ->
-                                coroutineScope.launch {
-                                    db.userDao().insertUser(User(email, password))
-                                    showLogin = true
-                                }
-                            },
-                            onBack = { showLogin = true }
-                        )
+                        if (showLogin) {
+                            LoginScreen(
+                                onLogin = { email, password ->
+                                    coroutineScope.launch {
+                                        val user = db.userDao().getUser(email, password)
+                                        if (user != null) {
+                                            isLoggedIn = true
+                                        }
+                                    }
+                                },
+                                onRegister = { showLogin = false }
+                            )
+                        } else {
+                            RegisterScreen(
+                                onRegister = { email, password ->
+                                    coroutineScope.launch {
+                                        db.userDao().insertUser(User(email, password))
+                                        showLogin = true
+                                    }
+                                },
+                                onBack = { showLogin = true }
+                            )
+                        }
                     }
                 }
             }
@@ -99,95 +139,180 @@ class MainActivity : ComponentActivity() {
 }
 
 
-@Composable
-fun LoginScreen(onLogin: (String, String) -> Unit, onRegister: () -> Unit) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var errorMessage by remember { mutableStateOf("") }
+    @Composable
+    fun LoginScreen(onLogin: (String, String) -> Unit, onRegister: () -> Unit) {
+        var email by remember { mutableStateOf("") }
+        var password by remember { mutableStateOf("") }
+        var errorMessage by remember { mutableStateOf("") }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Center
-    ) {
-        TextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text("Email") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        TextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Senha") },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = { onLogin(email, password) },
-            modifier = Modifier.fillMaxWidth()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center
         ) {
-            Text("Login")
-        }
-        if (errorMessage.isNotEmpty()) {
-            Text(
-                text = errorMessage,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(top = 8.dp)
+            TextField(
+                value = email,
+                onValueChange = { email = it },
+                label = { Text("Email") },
+                modifier = Modifier.fillMaxWidth()
             )
-            Text("Não possui uma conta?", modifier = Modifier.padding(top = 8.dp))
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        TextButton(
-            onClick = onRegister,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Registrar")
+            Spacer(modifier = Modifier.height(8.dp))
+            TextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Senha") },
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = { onLogin(email, password) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Login", color = MaterialTheme.colorScheme.secondary)
+            }
+            if (errorMessage.isNotEmpty()) {
+                Text(
+                    text = errorMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+                Text("Não possui uma conta?", modifier = Modifier.padding(top = 8.dp))
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(
+                onClick = onRegister,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Registrar", color = MaterialTheme.colorScheme.secondary)
+            }
         }
     }
-}
+
+    @Composable
+    fun RegisterScreen(onRegister: (String, String) -> Unit, onBack: () -> Unit) {
+        var email by remember { mutableStateOf("") }
+        var password by remember { mutableStateOf("") }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            TextField(
+                value = email,
+                onValueChange = { email = it },
+                label = { Text("Email") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            TextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Senha") },
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = { onRegister(email, password) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Registrar", color = MaterialTheme.colorScheme.secondary)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(
+                onClick = onBack,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Voltar para Login", color = MaterialTheme.colorScheme.secondary)
+            }
+        }
+    }
 
 @Composable
-fun RegisterScreen(onRegister: (String, String) -> Unit, onBack: () -> Unit) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+fun ProductScreen(db: AppDatabase) {
+    val coroutineScope = rememberCoroutineScope()
+    var produtos by remember { mutableStateOf(listOf<Product>()) }
+    var nome by remember { mutableStateOf("") }
+    var alcoolico by remember { mutableStateOf("") }
+    var preco by remember { mutableStateOf("") }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Center
-    ) {
+    LaunchedEffect(Unit) {
+        produtos = db.productDao().getAllProducts()
+    }
+
+    Column(modifier = Modifier.padding(16.dp)) {
         TextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text("Email") },
+            value = nome,
+            onValueChange = { nome = it },
+            label = { Text("Nome") },
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))
         TextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Senha") },
-            visualTransformation = PasswordVisualTransformation(),
+            value = alcoolico,
+            onValueChange = { alcoolico = it },
+            label = { Text("Teor Alcoólico") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        TextField(
+            value = preco,
+            onValueChange = { preco = it },
+            label = { Text("Preço") },
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(16.dp))
         Button(
-            onClick = { onRegister(email, password) },
+            onClick = {
+                coroutineScope.launch {
+                    try {
+                        val product =
+                            Product(nome = nome, teor = alcoolico, preco = preco.toDouble())
+                        db.productDao().insertProduct(product)
+                        produtos = db.productDao().getAllProducts()
+                        nome = ""
+                        alcoolico = ""
+                        preco = ""
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Registrar")
+            Text("Adicionar Produto", color = MaterialTheme.colorScheme.secondary)
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        TextButton(
-            onClick = onBack,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Voltar para Login")
+        Spacer(modifier = Modifier.height(16.dp))
+
+            LazyColumn {
+                items(produtos) { product ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "${product.nome} | ${product.teor} | ${product.preco}",
+                            color = MaterialTheme.colorScheme.secondary,
+                            fontSize = 20.sp
+                        )
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    db.productDao().deleteProduct(product)
+                                    produtos = db.productDao().getAllProducts()
+                                }
+                            }
+                        ) {
+                            Text("Deletar", color = MaterialTheme.colorScheme.secondary)
+                        }
+                    }
+                }
+            }
         }
     }
-}
